@@ -11,6 +11,7 @@ Common Lisp寄りの実装に、TypeScript風の型システムを組み合わ�
 - **段階的型付け（Gradual Typing）**: 型宣言はオプション。型なしでも動作し、型で制約することも可能
 - **Go連携**: Lisp内部からGo関数を呼び出せる
 - **Lisp-2**: Common Lispと同様に、関数と変数の名前空間を分離
+- **柔軟な設計**: 構文の詳細は実装しながら調整し、使いやすさを優先する
 
 ## 最終ゴール
 
@@ -109,16 +110,19 @@ t
 
 #### 型宣言の構文
 
+**注意**: 以下の構文は実装しながら調整する可能性があります。
+実際にパースしやすく、使いやすい構文を採用します。
+
 ```lisp
 ;; 変数の型宣言
 (defvar x integer)
 (defvar y (or integer string))
 
-;; 関数の型宣言（引数と戻り値）
+;; 関数の型宣言（候補案1: 引数を ((name type) ...) 形式）
 (defun add ((x integer) (y integer)) integer
   (+ x y))
 
-;; declare文を使った型宣言（Common Lisp互換）
+;; 関数の型宣言（候補案2: declare文を使用、Common Lisp互換）
 (defun add (x y)
   (declare (type integer x y))
   (+ x y))
@@ -127,6 +131,12 @@ t
 (defun add (x y)
   (+ x y))
 ```
+
+**検討事項**:
+- パースのしやすさ
+- Common Lispとの互換性
+- 型なし関数との統一感
+- キーワード引数との組み合わせ
 
 #### 型チェック
 
