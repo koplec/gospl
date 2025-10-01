@@ -148,16 +148,23 @@ t
 ### Go連携
 
 ```lisp
-;; Go関数をLispから呼び出す
-(go:call "fmt.Println" "Hello from Lisp")
-
-;; Go関数をLisp関数として登録
-(defun println (x)
-  (go:call "fmt.Println" x))
+;; Go側で事前に登録された関数を呼び出す
+(println "Hello from Lisp")
+(sprintf "Result: %d" 42)
 ```
 
-Go側からは：
-- Go関数をLisp環境に登録
+Go側の実装：
+```go
+// Go関数をLisp環境に登録
+env.RegisterFunc("println", fmt.Println)
+env.RegisterFunc("sprintf", fmt.Sprintf)
+
+// Lisp関数をGoから呼び出し
+result := env.CallLispFunc("my-func", arg1, arg2)
+```
+
+機能：
+- Go関数をLisp環境に登録（事前登録制）
 - Lisp関数をGoから呼び出し
 - Lisp値とGo値の相互変換
 
@@ -453,7 +460,7 @@ Error: Type error (before execution)
 - 評価器の前に型チェッカーを追加
 - REPLでは入力ごとに型チェック → 評価の順で実行
 
-### M5: リスト操作と制御構造
+### M5: リスト操作と基本的な制御構造
 
 **目標**: 基本的なリスト操作と条件分岐ができる
 
@@ -463,17 +470,18 @@ Error: Type error (before execution)
   - `car`, `cdr`, `cons`, `list`
   - `first`, `rest`, `nth`, `length`
   - `append`, `reverse`
-- 条件分岐
+- 基本的な制御構造（特殊形式として実装）
   - `if`
   - `cond`
-  - `when`, `unless`
+  - `progn`
 - 真偽値の扱い
   - `nil`はfalse、それ以外はtrue
 - 比較関数
   - `eq`, `eql`, `equal`
   - `=`, `<`, `>`, `<=`, `>=`
-- `progn`
 - `setq`, `defvar`
+
+**注意**: `when`, `unless`, `let`, `let*` などはM6でマクロとして実装します。
 
 **動作例**:
 ```lisp
@@ -508,7 +516,67 @@ GREATER
 20
 ```
 
-### M6: より多くのCommon Lisp関数
+### M6: マクロシステム（基礎）
+
+**目標**: マクロによるメタプログラミングの基礎を実装
+
+**実装内容**:
+- `defmacro`の実装
+  - マクロ定義
+  - マクロ展開時の環境
+- バッククォート `` ` ``
+- カンマ `,`（unquote）
+- カンマアット `,@`（unquote-splicing）
+- `macroexpand`, `macroexpand-1`
+- 基本的なマクロの実装
+  - `let`, `let*`
+  - `when`, `unless`
+  - `and`, `or`
+
+**動作例**:
+```lisp
+> (defmacro when (condition &rest body)
+    `(if ,condition (progn ,@body) nil))
+WHEN
+
+> (macroexpand '(when (> x 0) (print x) (print "positive")))
+(IF (> X 0) (PROGN (PRINT X) (PRINT "positive")) NIL)
+
+> (when (> 5 3)
+    (print "yes")
+    (print "indeed"))
+"yes"
+"indeed"
+"indeed"
+
+> (defmacro let (bindings &rest body)
+    `((lambda ,(mapcar #'car bindings) ,@body)
+      ,@(mapcar #'cadr bindings)))
+LET
+
+> (let ((x 10) (y 20))
+    (+ x y))
+30
+
+> (defmacro and (&rest args)
+    (if (null args) t
+        (if (null (cdr args)) (car args)
+            `(if ,(car args) (and ,@(cdr args)) nil))))
+AND
+
+> (and (> 5 3) (< 2 4) (= 1 1))
+T
+
+> (and (> 5 3) (< 10 4))
+NIL
+```
+
+**実装のポイント**:
+- マクロ展開は評価前に行う
+- バッククォートの実装が鍵
+- `&rest`（可変長引数）のサポートが必要
+
+### M7: より多くのCommon Lisp関数
 
 **目標**: よく使われるCommon Lisp関数を実装
 
@@ -523,7 +591,9 @@ GREATER
   - `mod`, `rem`
 - リスト関数
   - `member`, `assoc`
-  - `push`, `pop`（マクロとして）
+- マクロの実装
+  - `push`, `pop`
+  - `dolist`, `dotimes`
 - 述語
   - `consp`, `listp`
   - `evenp`, `oddp`
@@ -546,12 +616,30 @@ GREATER
 > (max 3 1 4 1 5 9)
 9
 
+> (defvar my-list nil)
+MY-LIST
+
+> (push 1 my-list)
+(1)
+
+> (push 2 my-list)
+(2 1)
+
+> (dolist (x '(1 2 3 4 5))
+    (print (* x x)))
+1
+4
+9
+16
+25
+NIL
+
 > (format t "Hello, ~a!~%" "World")
 Hello, World!
 NIL
 ```
 
-### M7: 高度な型推論とユニオン型
+### M8: 高度な型推論とユニオン型
 
 **目標**: より高度な型機能を実装（TypeScript風）
 
@@ -648,9 +736,11 @@ PROCESS
 3. 変数の型推論（推奨）
 4. Type Narrowing（オプション、実装が複雑）
 
-### M8: Go連携機能
+### M9: Go連携機能
 
 **目標**: LispとGoの相互運用を実現
+
+**実装方針**: 文字列ベースの動的呼び出しではなく、事前登録制を採用します。
 
 **実装内容**:
 - Lisp値とGo値の相互変換
@@ -658,38 +748,23 @@ PROCESS
   - String ↔ string
   - List ↔ []interface{}
   - Boolean ↔ bool
-- Go関数をLisp環境に登録
+- **Go関数の事前登録**（推奨方式）
+  - Go側で関数を登録
   - 型情報の保持
   - 引数の自動変換
 - Lisp関数をGoから呼び出し
-- 組み込みGo関数の提供
-  - `go:call` - Go関数の呼び出し
-  - `go:import` - Goパッケージのインポート
 
-**使用例（Lisp側）**:
-```lisp
-> (go:call "fmt.Println" "Hello from Lisp")
-Hello from Lisp
-NIL
-
-> (defun greet (name)
-    (go:call "fmt.Printf" "Hello, %s!\n" name))
-GREET
-
-> (greet "World")
-Hello, World!
-NIL
-```
-
-**使用例（Go側）**:
+**使用例（Go側で関数を登録）**:
 ```go
 // Go関数をLispに登録
-env.RegisterGoFunc("add", func(a, b int) int {
+env.RegisterFunc("println", fmt.Println)
+env.RegisterFunc("sprintf", fmt.Sprintf)
+env.RegisterFunc("add-go", func(a, b int) int {
     return a + b
 })
 
 // Lispコードを実行
-result := env.Eval("(add 1 2)")
+result := env.Eval("(add-go 1 2)")
 fmt.Println(result) // 3
 
 // Lisp関数をGoから呼び出し
@@ -697,41 +772,81 @@ result := env.CallLispFunc("square", 5)
 fmt.Println(result) // 25
 ```
 
-### M9: マクロシステム
+**使用例（Lisp側）**:
+```lisp
+;; 事前に登録されたGo関数を呼び出し
+> (println "Hello from Lisp")
+Hello from Lisp
+NIL
 
-**目標**: マクロによるメタプログラミングを可能にする
+> (sprintf "Hello, %s!" "World")
+"Hello, World!"
+
+> (add-go 10 20)
+30
+
+;; Lisp関数を定義
+> (defun greet (name)
+    (println (sprintf "Hello, %s!" name)))
+GREET
+
+> (greet "World")
+Hello, World!
+NIL
+```
+
+**実装のポイント**:
+- 文字列ベースの `(go:call "fmt.Println" ...)` は実装しない
+- 事前登録制により型安全性を確保
+- リフレクションの使用を最小限に
+
+### M10: 高度なマクロ機能
+
+**目標**: より高度なマクロ機能を実装
 
 **実装内容**:
-- `defmacro`の実装
-  - マクロ定義
-  - マクロ展開時の環境
-- バッククォート `` ` ``
-- カンマ `,`（unquote）
-- カンマアット `,@`（unquote-splicing）
-- `macroexpand`, `macroexpand-1`
-- 衛生的マクロの簡易サポート（gensym）
-- よく使うマクロの実装
-  - `let`, `let*`
-  - `push`, `pop`
-  - `when`, `unless`（マクロ版）
-  - `and`, `or`
+- `gensym` - ユニークなシンボル生成
+- 衛生的マクロの簡易サポート
+- より複雑なマクロの実装例
+  - `with-gensyms`
+  - `defstruct`（簡易版）
+- マクロのデバッグサポート
+  - `macroexpand-all`
+  - マクロ展開のトレース
 
 **動作例**:
 ```lisp
-> (defmacro when (condition &rest body)
-    `(if ,condition (progn ,@body) nil))
-WHEN
+> (gensym)
+#:G001
 
-> (macroexpand '(when (> x 0) (print x) (print "positive")))
-(IF (> X 0) (PROGN (PRINT X) (PRINT "positive")) NIL)
+> (gensym "TEMP")
+#:TEMP002
 
 > (defmacro with-gensyms (syms &rest body)
     `(let ,(mapcar (lambda (s) `(,s (gensym))) syms)
        ,@body))
 WITH-GENSYMS
+
+> (defmacro my-swap (a b)
+    (with-gensyms (temp)
+      `(let ((,temp ,a))
+         (setq ,a ,b)
+         (setq ,b ,temp))))
+MY-SWAP
+
+> (defvar x 1)
+X
+> (defvar y 2)
+Y
+> (my-swap x y)
+2
+> x
+2
+> y
+1
 ```
 
-### M10: データ構造（配列、ハッシュテーブル）
+### M11: データ構造（配列、ハッシュテーブル）
 
 **目標**: より多くのデータ構造をサポート
 
@@ -779,7 +894,7 @@ HT
 T
 ```
 
-### M11: パッケージシステム
+### M12: パッケージシステム
 
 **目標**: 名前空間の管理を可能にする
 
@@ -950,7 +1065,7 @@ type Environment struct {
 
 ### 型推論のレベル
 
-| レベル | 内容 | M4a | M4b | M7 |
+| レベル | 内容 | M4a | M4b | M8 |
 |-------|------|-----|-----|----|
 | リテラル推論 | `42` → integer | ❌ | ✅ | ✅ |
 | 変数推論 | `(defvar x 42)` → x: integer | ❌ | ✅ | ✅ |
@@ -983,15 +1098,34 @@ type Environment struct {
 |------|-----------|---------------------|-----------|
 | M4a | 🟢 簡単 | 実行時 | 型システムの基礎、型情報の管理 |
 | M4b | 🟡 中程度 | 実行前 | 静的解析、型推論の基礎 |
-| M7 | 🔴 難しい | 実行前 | 高度な型推論、ユニオン型 |
+| M8 | 🔴 難しい | 実行前 | 高度な型推論、ユニオン型 |
 
-この設計により、以下を実現します：
+## マイルストーンの順序（改訂版）
+
+マクロシステムを早期に実装することで、多くの構文をマクロで実装できるようになります：
+
+1. **M1-M3**: 基礎（S式、評価器、関数）
+2. **M4a-M4b**: 型システムの基礎
+3. **M5**: リスト操作と基本的な制御構造（`if`, `cond`, `progn`のみ）
+4. **M6**: マクロシステム（基礎） ← 早期実装
+   - `let`, `when`, `unless`, `and`, `or` などをマクロで実装
+5. **M7**: より多くのCommon Lisp関数
+   - `push`, `pop`, `dolist`, `dotimes` もマクロで実装
+6. **M8**: 高度な型推論とユニオン型
+7. **M9**: Go連携（事前登録制）
+8. **M10**: 高度なマクロ機能（`gensym`, 衛生的マクロ）
+9. **M11**: データ構造（配列、ハッシュテーブル）
+10. **M12**: パッケージシステム
+
+この順序により、以下を実現します：
 
 1. **段階的学習**: 簡単なものから始めて徐々に高度な機能へ
 2. **早期フィードバック**: M4aで型システムの基礎がすぐ動く
-3. **実行前エラー検出**: M4bでPHP/Pythonより安全に
-4. **TypeScript風の使用感**: M7で現代的な型システム
-5. **実装可能な範囲**: 完全な型推論より現実的
+3. **マクロの活用**: M6以降、多くの構文をマクロで実装できる
+4. **コードの重複削減**: 特殊形式として実装する必要がなくなる
+5. **Lispらしさ**: マクロでコードを生成するLispの本質を学べる
+6. **実行前エラー検出**: M4b/M8でPHP/Pythonより安全に
+7. **TypeScript風の使用感**: M8で現代的な型システム
 
 ---
 
