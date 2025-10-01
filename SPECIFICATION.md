@@ -938,6 +938,288 @@ Hello from myapp!
 NIL
 ```
 
+### M13: 高度な制御構造とキーワード引数
+
+**目標**: PAIP/On Lispで頻繁に使われる高度な機能を実装
+
+**実装内容**:
+
+#### 1. キーワード引数とオプション引数
+- `&optional` - オプション引数
+- `&key` - キーワード引数
+- `&rest` の拡張（既にあるが完全対応）
+- デフォルト値のサポート
+
+#### 2. `loop` マクロ（簡易版）
+- `for ... in ...` - リスト反復
+- `for ... from ... to ...` - 数値範囲
+- `collect` - 結果を収集
+- `do` - 副作用
+- `when` / `unless` - 条件付き実行
+- `sum` / `count` - 集計
+
+#### 3. `case` 系マクロ
+- `case` - 値による分岐
+- `typecase` - 型による分岐
+- `ecase` / `etypecase` - 網羅性チェック付き
+
+#### 4. 分解束縛
+- `destructuring-bind` - パターンマッチング的な束縛
+- ネストした構造の分解
+
+#### 5. 多値返却
+- `values` - 複数の値を返す
+- `multiple-value-bind` - 複数の値を受け取る
+- `multiple-value-call` - 複数の値を引数として渡す
+
+**動作例**:
+```lisp
+;; キーワード引数
+> (defun greet (&key (name "World") (greeting "Hello"))
+    (format t "~a, ~a!~%" greeting name))
+GREET
+
+> (greet)
+Hello, World!
+NIL
+
+> (greet :name "Alice")
+Hello, Alice!
+NIL
+
+> (greet :name "Bob" :greeting "Hi")
+Hi, Bob!
+NIL
+
+;; オプション引数
+> (defun power (base &optional (exponent 2))
+    (expt base exponent))
+POWER
+
+> (power 3)
+9
+
+> (power 3 3)
+27
+
+;; loop マクロ
+> (loop for i from 1 to 5
+        collect (* i i))
+(1 4 9 16 25)
+
+> (loop for x in '(1 2 3 4 5)
+        when (evenp x)
+        collect x)
+(2 4)
+
+> (loop for i from 1 to 10
+        sum i)
+55
+
+> (loop for x in '(a b c)
+        for i from 1
+        collect (list i x))
+((1 A) (2 B) (3 C))
+
+;; case
+> (defun day-type (day)
+    (case day
+      ((saturday sunday) 'weekend)
+      ((monday tuesday wednesday thursday friday) 'weekday)
+      (otherwise 'unknown)))
+DAY-TYPE
+
+> (day-type 'saturday)
+WEEKEND
+
+> (day-type 'monday)
+WEEKDAY
+
+;; typecase
+> (defun describe-type (x)
+    (typecase x
+      (integer "It's an integer")
+      (string "It's a string")
+      (list "It's a list")
+      (otherwise "It's something else")))
+DESCRIBE-TYPE
+
+> (describe-type 42)
+"It's an integer"
+
+> (describe-type "hello")
+"It's a string"
+
+;; destructuring-bind
+> (destructuring-bind (a b &rest rest) '(1 2 3 4 5)
+    (list :first a :second b :rest rest))
+(:FIRST 1 :SECOND 2 :REST (3 4 5))
+
+> (destructuring-bind ((x y) z) '((1 2) 3)
+    (list x y z))
+(1 2 3)
+
+;; 多値返却
+> (defun divide-with-remainder (a b)
+    (values (floor a b) (mod a b)))
+DIVIDE-WITH-REMAINDER
+
+> (divide-with-remainder 10 3)
+3
+1
+
+> (multiple-value-bind (quot rem) (divide-with-remainder 10 3)
+    (format t "Quotient: ~a, Remainder: ~a~%" quot rem))
+Quotient: 3, Remainder: 1
+NIL
+```
+
+**実装のポイント**:
+- `loop` は複雑なので、よく使われる機能のみ実装（簡易版）
+- キーワード引数のパースは lambda リスト全体の再設計が必要
+- 多値返却は内部的に特別な型で扱う
+
+### M14: エラーハンドリングとCLOS（簡易版）
+
+**目標**: 堅牢なコードとオブジェクト指向プログラミングをサポート
+
+**実装内容**:
+
+#### 1. エラーハンドリング
+- `unwind-protect` - クリーンアップ保証
+- `error` - エラーを発生させる
+- `handler-case` - エラーをキャッチ（簡易版）
+- `handler-bind` - エラーハンドラの束縛（簡易版）
+- `ignore-errors` - エラーを無視
+
+#### 2. CLOS（Common Lisp Object System）の基礎
+- `defclass` - クラス定義
+- `make-instance` - インスタンス生成
+- `defmethod` - メソッド定義（単純なディスパッチのみ）
+- スロットアクセス
+  - `:accessor` - ゲッターとセッター
+  - `:reader` - ゲッターのみ
+  - `:writer` - セッターのみ
+  - `:initarg` - 初期化引数
+  - `:initform` - デフォルト値
+- `slot-value` - スロット値の取得・設定
+
+#### 3. その他の便利機能
+- `assert` - アサーション
+- `check-type` - 型チェック
+- `trace` / `untrace` - 関数トレース（デバッグ用）
+
+**動作例**:
+```lisp
+;; unwind-protect
+> (defun safe-divide (a b)
+    (unwind-protect
+        (progn
+          (format t "Dividing ~a by ~a~%" a b)
+          (/ a b))
+      (format t "Cleanup done~%")))
+SAFE-DIVIDE
+
+> (safe-divide 10 2)
+Dividing 10 by 2
+Cleanup done
+5
+
+> (safe-divide 10 0)
+Dividing 10 by 0
+Cleanup done
+Error: Division by zero
+
+;; handler-case
+> (handler-case
+      (progn
+        (print "Before error")
+        (error "Something went wrong")
+        (print "After error"))
+    (error (e)
+      (format t "Caught error: ~a~%" e)))
+"Before error"
+Caught error: Something went wrong
+NIL
+
+;; defclass
+> (defclass point ()
+    ((x :accessor point-x :initarg :x :initform 0)
+     (y :accessor point-y :initarg :y :initform 0)))
+#<CLASS POINT>
+
+> (defvar p1 (make-instance 'point :x 10 :y 20))
+P1
+
+> (point-x p1)
+10
+
+> (point-y p1)
+20
+
+> (setf (point-x p1) 30)
+30
+
+> (point-x p1)
+30
+
+;; defmethod（簡易版）
+> (defmethod distance ((p point))
+    (sqrt (+ (* (point-x p) (point-x p))
+             (* (point-y p) (point-y p)))))
+#<METHOD DISTANCE (POINT)>
+
+> (distance p1)
+36.05551275463989
+
+;; 継承（簡易版）
+> (defclass point3d (point)
+    ((z :accessor point-z :initarg :z :initform 0)))
+#<CLASS POINT3D>
+
+> (defvar p2 (make-instance 'point3d :x 1 :y 2 :z 3))
+P2
+
+> (point-x p2)
+1
+
+> (point-z p2)
+3
+
+;; assert
+> (defun safe-sqrt (x)
+    (assert (>= x 0) (x) "x must be non-negative, got ~a" x)
+    (sqrt x))
+SAFE-SQRT
+
+> (safe-sqrt 4)
+2.0
+
+> (safe-sqrt -1)
+Error: x must be non-negative, got -1
+
+;; trace（デバッグ用）
+> (trace factorial)
+(FACTORIAL)
+
+> (factorial 3)
+  0: (FACTORIAL 3)
+    1: (FACTORIAL 2)
+      2: (FACTORIAL 1)
+        3: (FACTORIAL 0)
+        3: FACTORIAL returned 1
+      2: FACTORIAL returned 1
+    1: FACTORIAL returned 2
+  0: FACTORIAL returned 6
+6
+```
+
+**実装のポイント**:
+- CLOSは完全実装すると非常に複雑（多重ディスパッチ、メソッドコンビネーションなど）
+- 簡易版として単一ディスパッチのみサポート
+- 継承は基本的なスロットの継承のみ
+- `trace`はデバッグに便利だが、オプション機能
+
 ## プロジェクト構造（予定）
 
 ```
@@ -969,11 +1251,16 @@ golisp/
 │   └── go_interop.go        # Go連携
 ├── package/
 │   └── package.go           # パッケージシステム
+├── clos/
+│   ├── class.go             # クラスシステム（簡易版）
+│   └── method.go            # メソッドディスパッチ
 └── stdlib/
     ├── list.go              # リスト関数
     ├── number.go            # 数値関数
     ├── io.go                # 入出力
-    └── string.go            # 文字列関数
+    ├── string.go            # 文字列関数
+    ├── control.go           # 制御構造（loop, case等）
+    └── error.go             # エラーハンドリング
 ```
 
 ## 参考資料
@@ -1116,6 +1403,24 @@ type Environment struct {
 8. **M10**: 高度なマクロ機能（`gensym`, 衛生的マクロ）
 9. **M11**: データ構造（配列、ハッシュテーブル）
 10. **M12**: パッケージシステム
+11. **M13**: 高度な制御構造とキーワード引数 ← PAIP/On Lisp対応
+    - `loop`, `case`, `destructuring-bind`, 多値返却
+12. **M14**: エラーハンドリングとCLOS（簡易版） ← 完全性向上
+    - `unwind-protect`, `handler-case`, `defclass`, `defmethod`
+
+### 各マイルストーン完了時のPAIP/On Lisp対応度
+
+| マイルストーン | 対応度 | 写経できる内容 |
+|--------------|--------|---------------|
+| M1-M3 | 20% | 基本的な再帰関数 |
+| M4-M5 | 35% | リスト処理、条件分岐 |
+| M6 | **60%** | 基本的なマクロ例 |
+| M7 | 65% | 高階関数を使ったコード |
+| M8 | 70% | 型システムを除くほとんど |
+| M9-M11 | 80% | データ構造を使ったコード |
+| M12 | 85% | パッケージを使ったコード |
+| **M13** | **90%** | PAIPのほとんどの章 |
+| **M14** | **95%+** | エラー処理、OOP含む完全版 |
 
 この順序により、以下を実現します：
 
@@ -1126,6 +1431,8 @@ type Environment struct {
 5. **Lispらしさ**: マクロでコードを生成するLispの本質を学べる
 6. **実行前エラー検出**: M4b/M8でPHP/Pythonより安全に
 7. **TypeScript風の使用感**: M8で現代的な型システム
+8. **PAIP/On Lisp対応**: M13で90%以上のコードが動作可能
+9. **実用性**: M14でエラー処理とOOPにより本格的な開発が可能
 
 ---
 
