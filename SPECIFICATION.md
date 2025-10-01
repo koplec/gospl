@@ -130,9 +130,10 @@ t
 
 #### 型チェック
 
-- **実行時型チェック**: 型宣言がある場合、実行時に型をチェック
-- **型推論**: 可能な範囲で型を推論
+- **静的型チェック**: 型宣言がある場合、評価前（実行前）に型をチェック
+- **型推論**: 可能な範囲で型を推論（リテラル、関数戻り値など）
 - **段階的導入**: 一部の関数だけ型付けすることも可能
+- **型なしコードとの共存**: 型アノテーションがないコードは動的型付けとして動作
 
 ### Go連携
 
@@ -267,40 +268,84 @@ MAKE-ADDER
 15
 ```
 
-### M4: 基本的な型システム
+### M4: 基本的な型システム（静的型チェック）
 
-**目標**: 型宣言と実行時型チェックができる
+**目標**: 型宣言と静的型チェックができる（実行前にエラー検出）
 
 **実装内容**:
 - 型の内部表現
   - Type インターフェース
   - プリミティブ型（Integer, Float, String, Boolean, Symbol）
   - 複合型（List, Cons）
-- `declare`フォームの実装
-- 実行時型チェック
-  - 関数引数の型チェック
-  - 戻り値の型チェック
-- 型エラーの報告
+- 型アノテーションのパース
+  - 関数の引数型・戻り値型
+  - 変数の型宣言
+- **静的型チェッカー**の実装
+  - 評価前に型チェックパスを実行
+  - リテラルの型推論（`1` → integer, `"hello"` → string）
+  - 変数の型追跡
+  - 関数呼び出しの型検証
+- 型エラーの報告（実行前）
 - 型述語の実装
   - `numberp`, `symbolp`, `listp`, `stringp`, `atom`, `null`
+- `declare`フォームの実装（Common Lisp互換）
+
+**処理の流れ**:
+```
+1. Read: S式をパース
+2. Type Check: 型チェック ← ここでエラー検出
+3. Eval: 評価（型チェックが通った場合のみ）
+```
 
 **動作例**:
 ```lisp
-> (defun typed-add ((x integer) (y integer)) integer
+> (defun add ((x integer) (y integer)) integer
     (+ x y))
-TYPED-ADD
+ADD
 
-> (typed-add 1 2)
+> (add 1 2)
 3
 
-> (typed-add 1 "hello")
-Error: Type error: expected integer, got string
+> (add 1 "hello")
+Error: Type error (before execution)
+  Function: add
+  Argument 2: expected integer, got string
+  At: (add 1 "hello")
+
+> (defun square ((x integer)) integer
+    (* x x))
+SQUARE
+
+> (square 5)
+25
+
+> (defvar result integer)
+RESULT
+
+> (setq result (square 5))  ; OK: squareはintegerを返す
+25
+
+> (setq result "invalid")   ; Error (before execution)
+Error: Type error
+  Variable: result
+  Expected: integer
+  Got: string
 
 > (numberp 42)
 T
 
 > (symbolp 'foo)
 T
+
+;; 型なしコードも動作（動的型付け）
+> (defun untyped (x) (* x x))
+UNTYPED
+
+> (untyped 5)      ; OK
+25
+
+> (untyped "hi")   ; 実行時エラー（型チェックなし）
+Error: Runtime error: * expects numbers
 ```
 
 ### M5: リスト操作と制御構造
@@ -401,22 +446,27 @@ Hello, World!
 NIL
 ```
 
-### M7: 型推論とユニオン型
+### M7: 高度な型推論とユニオン型
 
-**目標**: より高度な型機能を実装
+**目標**: より高度な型機能を実装（TypeScript風）
 
 **実装内容**:
 - ユニオン型 `(or type1 type2 ...)`
+  - 静的チェック対応
+  - 複数の型を許容
 - 関数型 `(function (arg-types...) return-type)`
 - リスト型 `(list element-type)`
-- 簡易的な型推論
-  - リテラルからの型推論
+- **高度な型推論**
   - 関数戻り値の型推論
-- 型アノテーション付きの変数定義
+  - 変数への代入からの型推論
+  - 式全体の型推論
 - 型エラーメッセージの改善
+- （オプション）Type Narrowing
+  - 条件分岐による型の絞り込み
 
 **動作例**:
 ```lisp
+;; ユニオン型
 > (defvar x (or integer string))
 X
 
@@ -427,18 +477,71 @@ X
 "hello"
 
 > (setq x 3.14)
-Error: Type error: expected (or integer string), got float
+Error: Type error (before execution)
+  Variable: x
+  Expected: (or integer string)
+  Got: float
 
-> (defun maybe-number ((x (or integer nil))) (or integer nil)
+;; 関数戻り値の型推論
+> (defun square ((x integer)) integer
+    (* x x))
+SQUARE
+
+> (defun use-square ((x integer))
+    (square x))  ; squareの戻り値がintegerと推論される
+USE-SQUARE
+
+> (defun bad-call ()
+    (square "oops"))
+Error: Type error (before execution)
+  Function: square
+  Expected argument: integer
+  Got: string
+
+;; 変数への代入からの型推論（型アノテーションなし）
+> (defvar y 42)        ; yの型はintegerと推論
+Y
+
+> (setq y "hello")     ; Error: yはinteger型
+Error: Type error
+  Variable: y (inferred type: integer)
+  Got: string
+
+;; ユニオン型の例
+> (defun maybe-inc ((x (or integer nil))) (or integer nil)
     (if x (+ x 1) nil))
-MAYBE-NUMBER
+MAYBE-INC
 
-> (maybe-number 5)
+> (maybe-inc 5)
 6
 
-> (maybe-number nil)
+> (maybe-inc nil)
 NIL
+
+> (maybe-inc "bad")
+Error: Type error (before execution)
+  Expected: (or integer nil)
+  Got: string
+
+;; Type Narrowing（オプション機能）
+> (defun process ((x (or integer string)))
+    (if (numberp x)
+        (+ x 1)        ; xはここではinteger
+        (length x)))   ; xはここではstring
+PROCESS
+
+> (process 5)
+6
+
+> (process "hello")
+5
 ```
+
+**実装の優先順位**:
+1. ユニオン型の基本サポート（必須）
+2. 関数戻り値の型推論（必須）
+3. 変数の型推論（推奨）
+4. Type Narrowing（オプション、実装が複雑）
 
 ### M8: Go連携機能
 
@@ -631,6 +734,9 @@ golisp/
 ├── types/
 │   ├── types.go             # S式のデータ型
 │   └── type_system.go       # 型システム
+├── typechecker/
+│   ├── checker.go           # 静的型チェッカー
+│   └── inference.go         # 型推論
 ├── eval/
 │   ├── eval.go              # 評価器
 │   ├── env.go               # 環境
@@ -671,6 +777,82 @@ golisp/
 3. REPLで動作確認しながら進める
 4. Common Lispの既存コードで動作検証
 
+## 型システムの設計詳細
+
+### 静的型チェックの動作原理
+
+GoLispの型システムは、TypeScriptと同様の「段階的型付け（Gradual Typing）」を採用しています。
+
+#### 処理フロー
+
+```
+入力: (add 1 "hello")
+  ↓
+1. Lexer: トークン化
+  ↓
+2. Parser: S式に変換
+  ↓
+3. Type Checker: 型チェック  ← ここでエラー検出
+  - addの型シグネチャを確認: (integer, integer) -> integer
+  - 引数1の型: integer ✓
+  - 引数2の型: string ✗
+  - エラー: "Expected integer, got string"
+  ↓
+4. Evaluator: 評価（型チェックが通った場合のみ）
+```
+
+#### 型情報の管理
+
+```go
+// 各関数は型シグネチャを持つ
+type FunctionType struct {
+    ParamTypes  []Type
+    ReturnType  Type
+}
+
+// 変数も型情報を持つ
+type Environment struct {
+    bindings  map[string]Value
+    types     map[string]Type  // 変数名 → 型
+}
+```
+
+### 型推論のレベル
+
+| レベル | 内容 | M4 | M7 |
+|-------|------|----|----|
+| リテラル推論 | `42` → integer | ✅ | ✅ |
+| 変数推論 | `(defvar x 42)` → x: integer | ✅ | ✅ |
+| 関数戻り値推論 | `(square 5)` → integer | ❌ | ✅ |
+| 式全体の推論 | `(+ 1 2)` → integer | ❌ | ✅ |
+| ユニオン型の絞り込み | `(if (numberp x) ...)` | ❌ | △ |
+
+### 型なしコードとの共存
+
+```lisp
+;; 型付きコード
+(defun typed-func ((x integer)) integer
+  (+ x 1))
+
+;; 型なしコード
+(defun untyped-func (x)
+  (+ x 1))
+
+;; 型付き → 型なし: OK（型情報は失われる）
+(untyped-func 5)  ; 実行時チェックのみ
+
+;; 型なし → 型付き: 戻り値の型チェックが必要
+(typed-func (untyped-func 5))  ; untypedの戻り値が不明
+                                ; → 実行時チェックにフォールバック
+```
+
+この設計により、以下を実現します：
+
+1. **実行前エラー検出**: PHP/Pythonより安全
+2. **段階的導入**: 既存コードを壊さない
+3. **TypeScript風の使用感**: 現代的な型システム
+4. **実装可能な範囲**: 完全な型推論より現実的
+
 ---
 
-最終更新: 2025-10-01
+最終更新: 2025-10-02
