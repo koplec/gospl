@@ -268,9 +268,9 @@ MAKE-ADDER
 15
 ```
 
-### M4: 基本的な型システム（静的型チェック）
+### M4a: 基本的な型システム（実行時型チェック）
 
-**目標**: 型宣言と静的型チェックができる（実行前にエラー検出）
+**目標**: 型宣言と実行時型チェックができる（まず動くものを作る）
 
 **実装内容**:
 - 型の内部表現
@@ -278,23 +278,121 @@ MAKE-ADDER
   - プリミティブ型（Integer, Float, String, Boolean, Symbol）
   - 複合型（List, Cons）
 - 型アノテーションのパース
-  - 関数の引数型・戻り値型
-  - 変数の型宣言
-- **静的型チェッカー**の実装
-  - 評価前に型チェックパスを実行
-  - リテラルの型推論（`1` → integer, `"hello"` → string）
-  - 変数の型追跡
-  - 関数呼び出しの型検証
-- 型エラーの報告（実行前）
+  - 関数の引数型・戻り値型の解析
+  - 変数の型宣言の解析
+  - `(defun add ((x integer) (y integer)) integer ...)` 形式のサポート
+- **実行時型チェック**の実装
+  - 関数呼び出し時に引数の型をチェック
+  - 関数の戻り値の型をチェック
+  - 変数への代入時に型をチェック
+- 型エラーの報告（実行時）
 - 型述語の実装
   - `numberp`, `symbolp`, `listp`, `stringp`, `atom`, `null`
 - `declare`フォームの実装（Common Lisp互換）
 
 **処理の流れ**:
 ```
-1. Read: S式をパース
-2. Type Check: 型チェック ← ここでエラー検出
-3. Eval: 評価（型チェックが通った場合のみ）
+入力: (add 1 "hello")
+  ↓
+1. Parser: S式に変換
+  ↓
+2. Evaluator: 評価開始
+  ↓
+3. 関数呼び出し
+  - 引数を評価: 1, "hello"
+  - 型チェック: integer, string ← ここでエラー検出
+  - エラー: 引数2はintegerを期待
+```
+
+**動作例**:
+```lisp
+> (defun add ((x integer) (y integer)) integer
+    (+ x y))
+ADD
+
+> (add 1 2)
+3
+
+> (add 1 "hello")
+Error: Type error (at runtime)
+  Function: add
+  Argument 2: expected integer, got string
+  At: (add 1 "hello")
+
+> (defun square ((x integer)) integer
+    (* x x))
+SQUARE
+
+> (square 5)
+25
+
+> (defvar result integer)
+RESULT
+
+> (setq result 42)
+42
+
+> (setq result "invalid")
+Error: Type error (at runtime)
+  Variable: result
+  Expected: integer
+  Got: string
+
+> (numberp 42)
+T
+
+> (symbolp 'foo)
+T
+
+;; 型なしコードも動作（動的型付け）
+> (defun untyped (x) (* x x))
+UNTYPED
+
+> (untyped 5)
+25
+
+> (untyped "hi")
+Error: Runtime error: * expects numbers
+```
+
+**実装のポイント**:
+- 型情報は関数定義時に保存
+- 実際のチェックは実行時（関数呼び出し時）
+- 実装が簡単で、すぐに動作確認できる
+
+### M4b: 静的型チェック（実行前エラー検出）
+
+**目標**: 評価前に型エラーを検出する（PHP/Pythonより安全に）
+
+**実装内容**:
+- **静的型チェッカー**の実装
+  - 評価前に型チェックパスを実行
+  - S式全体を走査して型を検証
+- リテラルの型推論
+  - `1` → integer
+  - `"hello"` → string
+  - `'symbol` → symbol
+- 変数の型追跡
+  - 環境に型情報を保持
+  - 変数参照時に型を返す
+- 関数呼び出しの型検証
+  - 引数の型を事前に検証
+  - 戻り値の型を返す
+- より詳細なエラーメッセージ
+
+**処理の流れ**:
+```
+入力: (add 1 "hello")
+  ↓
+1. Parser: S式に変換
+  ↓
+2. Type Checker: 型チェックパス ← 新規追加
+  - addの型シグネチャ: (integer, integer) -> integer
+  - 引数1の型: integer ✓
+  - 引数2の型: string ✗
+  - エラー: "Expected integer, got string"
+  ↓
+3. Evaluator: 評価（型チェックが通った場合のみ実行）
 ```
 
 **動作例**:
@@ -316,37 +414,34 @@ Error: Type error (before execution)
     (* x x))
 SQUARE
 
-> (square 5)
-25
-
-> (defvar result integer)
-RESULT
-
-> (setq result (square 5))  ; OK: squareはintegerを返す
-25
-
-> (setq result "invalid")   ; Error (before execution)
-Error: Type error
-  Variable: result
-  Expected: integer
+> (defun use-square ()
+    (square "oops"))
+Error: Type error (before execution)
+  Function: square
+  Expected argument: integer
   Got: string
+  At: (square "oops")
+  In function: use-square
 
-> (numberp 42)
-T
+;; 関数を定義しただけではエラーにならない
+> (defun bad-func ()
+    (add 1 "hello"))
+BAD-FUNC
 
-> (symbolp 'foo)
-T
-
-;; 型なしコードも動作（動的型付け）
-> (defun untyped (x) (* x x))
-UNTYPED
-
-> (untyped 5)      ; OK
-25
-
-> (untyped "hi")   ; 実行時エラー（型チェックなし）
-Error: Runtime error: * expects numbers
+;; 呼び出そうとするとエラー
+> (bad-func)
+Error: Type error (before execution)
+  Function: add
+  Expected argument 2: integer
+  Got: string
+  At: (add 1 "hello")
+  In function: bad-func
 ```
+
+**実装のポイント**:
+- M4aの実装を活用（型情報の管理は同じ）
+- 評価器の前に型チェッカーを追加
+- REPLでは入力ごとに型チェック → 評価の順で実行
 
 ### M5: リスト操作と制御構造
 
@@ -779,11 +874,12 @@ golisp/
 
 ## 型システムの設計詳細
 
-### 静的型チェックの動作原理
+### 段階的実装アプローチ
 
 GoLispの型システムは、TypeScriptと同様の「段階的型付け（Gradual Typing）」を採用しています。
+実装も段階的に進めることで、学習効果を高めます。
 
-#### 処理フロー
+#### M4a: 実行時型チェック
 
 ```
 入力: (add 1 "hello")
@@ -792,7 +888,27 @@ GoLispの型システムは、TypeScriptと同様の「段階的型付け（Grad
   ↓
 2. Parser: S式に変換
   ↓
-3. Type Checker: 型チェック  ← ここでエラー検出
+3. Evaluator: 評価開始
+  - 関数 add を呼び出し
+  - 引数の型をチェック ← ここでエラー検出
+  - エラー: "Expected integer, got string"
+```
+
+**実装が簡単な理由**:
+- 型チェックは関数呼び出し時のみ
+- 既存の評価器に型チェックを追加するだけ
+- S式全体を解析する必要なし
+
+#### M4b: 静的型チェック（実行前）
+
+```
+入力: (add 1 "hello")
+  ↓
+1. Lexer: トークン化
+  ↓
+2. Parser: S式に変換
+  ↓
+3. Type Checker: 型チェックパス ← 新規追加
   - addの型シグネチャを確認: (integer, integer) -> integer
   - 引数1の型: integer ✓
   - 引数2の型: string ✗
@@ -800,6 +916,11 @@ GoLispの型システムは、TypeScriptと同様の「段階的型付け（Grad
   ↓
 4. Evaluator: 評価（型チェックが通った場合のみ）
 ```
+
+**M4aとの違い**:
+- 評価前に専用の型チェックパスを実行
+- S式全体を走査して型を検証
+- エラーが実行前に検出される
 
 #### 型情報の管理
 
@@ -819,13 +940,13 @@ type Environment struct {
 
 ### 型推論のレベル
 
-| レベル | 内容 | M4 | M7 |
-|-------|------|----|----|
-| リテラル推論 | `42` → integer | ✅ | ✅ |
-| 変数推論 | `(defvar x 42)` → x: integer | ✅ | ✅ |
-| 関数戻り値推論 | `(square 5)` → integer | ❌ | ✅ |
-| 式全体の推論 | `(+ 1 2)` → integer | ❌ | ✅ |
-| ユニオン型の絞り込み | `(if (numberp x) ...)` | ❌ | △ |
+| レベル | 内容 | M4a | M4b | M7 |
+|-------|------|-----|-----|----|
+| リテラル推論 | `42` → integer | ❌ | ✅ | ✅ |
+| 変数推論 | `(defvar x 42)` → x: integer | ❌ | ✅ | ✅ |
+| 関数戻り値推論 | `(square 5)` → integer | ❌ | ❌ | ✅ |
+| 式全体の推論 | `(+ 1 2)` → integer | ❌ | ❌ | ✅ |
+| ユニオン型の絞り込み | `(if (numberp x) ...)` | ❌ | ❌ | △ |
 
 ### 型なしコードとの共存
 
@@ -846,12 +967,21 @@ type Environment struct {
                                 ; → 実行時チェックにフォールバック
 ```
 
+### 段階的実装の利点
+
+| 段階 | 実装難易度 | エラー検出タイミング | 学べること |
+|------|-----------|---------------------|-----------|
+| M4a | 🟢 簡単 | 実行時 | 型システムの基礎、型情報の管理 |
+| M4b | 🟡 中程度 | 実行前 | 静的解析、型推論の基礎 |
+| M7 | 🔴 難しい | 実行前 | 高度な型推論、ユニオン型 |
+
 この設計により、以下を実現します：
 
-1. **実行前エラー検出**: PHP/Pythonより安全
-2. **段階的導入**: 既存コードを壊さない
-3. **TypeScript風の使用感**: 現代的な型システム
-4. **実装可能な範囲**: 完全な型推論より現実的
+1. **段階的学習**: 簡単なものから始めて徐々に高度な機能へ
+2. **早期フィードバック**: M4aで型システムの基礎がすぐ動く
+3. **実行前エラー検出**: M4bでPHP/Pythonより安全に
+4. **TypeScript風の使用感**: M7で現代的な型システム
+5. **実装可能な範囲**: 完全な型推論より現実的
 
 ---
 
