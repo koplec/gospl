@@ -65,3 +65,81 @@ func TestLexer_BasicTokens(t *testing.T) {
 
 	}
 }
+
+func TestLexer_MultipleTokens(t *testing.T) {
+	input := "(+ 1 2)"
+	lexer := NewLexer(input)
+
+	expected := []struct {
+		tokenType TokenType
+		value     string
+	}{
+		{LPAREN, "("},
+		{SYMBOL, "+"},
+		{NUMBER, "1"},
+		{NUMBER, "2"},
+		{RPAREN, ")"},
+		{EOF, ""},
+	}
+
+	for i, want := range expected {
+		token, err := lexer.NextToken()
+		if err != nil {
+			t.Fatalf("token %d: undexpected error:%v", i, err)
+		}
+
+		if token.Type != want.tokenType {
+			t.Errorf("token %d: Type = %v, want %v", i, token.Type, want.tokenType)
+		}
+
+		if token.Value != want.value {
+			t.Errorf("token %d: Valyue = %q, want %q", i, token.Value, want.value)
+		}
+	}
+}
+
+func TestLexer_WhitespaceSkipTest(t *testing.T) {
+	input := "   (   +    1   )"
+	lexer := NewLexer(input)
+
+	expected := []struct {
+		tokenType TokenType
+		value     string
+	}{
+		{LPAREN, "("},
+		{SYMBOL, "+"},
+		{NUMBER, "1"},
+		{RPAREN, ")"},
+		{EOF, ""},
+	}
+
+	for i, want := range expected {
+		token, err := lexer.NextToken()
+		if err != nil {
+			t.Fatalf("token %d: undexpected error:%v", i, err)
+		}
+
+		if token.Type != want.tokenType {
+			t.Errorf("token %d: Type = %v, want %v", i, token.Type, want.tokenType)
+		}
+
+		if token.Value != want.value {
+			t.Errorf("token %d: Valyue = %q, want %q", i, token.Value, want.value)
+		}
+	}
+}
+
+// エラーケース
+
+func TestLexer_UnterminatedString(t *testing.T) {
+	lexer := NewLexer(`"hello`)
+	token, err := lexer.NextToken()
+
+	if err == nil {
+		t.Fatal("expected error for unterminated string")
+	}
+
+	if token.Type != ILLEGAL {
+		t.Errorf("expected ILLEGAL token, got %v", token.Type)
+	}
+}
