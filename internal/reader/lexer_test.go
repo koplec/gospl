@@ -85,7 +85,7 @@ func TestLexer_MultipleTokens(t *testing.T) {
 	for i, want := range expected {
 		token, err := lexer.NextToken()
 		if err != nil {
-			t.Fatalf("token %d: undexpected error:%v", i, err)
+			t.Fatalf("token %d: unexpected error:%v", i, err)
 		}
 
 		if token.Type != want.tokenType {
@@ -93,7 +93,7 @@ func TestLexer_MultipleTokens(t *testing.T) {
 		}
 
 		if token.Value != want.value {
-			t.Errorf("token %d: Valyue = %q, want %q", i, token.Value, want.value)
+			t.Errorf("token %d: Value = %q, want %q", i, token.Value, want.value)
 		}
 	}
 }
@@ -116,7 +116,7 @@ func TestLexer_WhitespaceSkipTest(t *testing.T) {
 	for i, want := range expected {
 		token, err := lexer.NextToken()
 		if err != nil {
-			t.Fatalf("token %d: undexpected error:%v", i, err)
+			t.Fatalf("token %d: unexpected error:%v", i, err)
 		}
 
 		if token.Type != want.tokenType {
@@ -124,7 +124,7 @@ func TestLexer_WhitespaceSkipTest(t *testing.T) {
 		}
 
 		if token.Value != want.value {
-			t.Errorf("token %d: Valyue = %q, want %q", i, token.Value, want.value)
+			t.Errorf("token %d: Value = %q, want %q", i, token.Value, want.value)
 		}
 	}
 }
@@ -234,6 +234,85 @@ func TestLexer_Position(t *testing.T) {
 					t.Errorf("token %d: position=(%d, %d), want (%d, %d)",
 						i, token.Pos.Line, token.Pos.Column, want.line, want.col)
 				}
+			}
+		})
+	}
+}
+
+func TestLexer_Quote(t *testing.T) {
+	input := "'(1 2 3)"
+	lexer := NewLexer(input)
+
+	expected := []TokenType{
+		QUOTE,
+		LPAREN, NUMBER, NUMBER, NUMBER, RPAREN,
+		EOF,
+	}
+
+	for i, want := range expected {
+		token, err := lexer.NextToken()
+		if err != nil {
+			t.Fatalf("token %d: unexpected error: %v", i, err)
+		}
+
+		if token.Type != want {
+			t.Errorf("token %d: Type=%v, want=%v", i, token.Type, want)
+		}
+	}
+}
+
+func TestLexer_ComplexSymbols(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue string
+	}{
+		{"symbol with hyphen", "foo-bar", "foo-bar"},
+		{"symbol with number", "var1", "var1"},
+		{"symbol with underscore", "foo_bar", "foo_bar"},
+		{"defun", "defun", "defun"},
+		{"lambda", "lambda", "lambda"},
+		{"asterisc operator", "*", "*"},
+		{"division operator", "/", "/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.input)
+			token, err := lexer.NextToken()
+
+			if err != nil {
+				t.Fatalf("unexpected error:%v", err)
+			}
+
+			if token.Type != SYMBOL {
+				t.Errorf("Type=%v, want SYMBOL", token.Type)
+			}
+
+			if token.Value != tt.wantValue {
+				t.Errorf("Value=%q, want %q", token.Value, tt.wantValue)
+			}
+		})
+	}
+}
+
+// 認識できない文字
+// common lispのマクロ文字に対応
+func TestLexer_UnrecoginizedCharacter(t *testing.T) {
+	tests := []string{
+		"@", "#", "$", "%",
+	}
+
+	for _, input := range tests {
+		t.Run("illegal char: "+input, func(t *testing.T) {
+			lexer := NewLexer(input)
+			token, err := lexer.NextToken()
+
+			if err == nil {
+				t.Errorf("expected error for input %q", input)
+			}
+			if token.Type != ILLEGAL {
+				t.Errorf("expected ILLEGAL token, got %v", token.Type)
 			}
 		})
 	}

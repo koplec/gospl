@@ -14,20 +14,14 @@
 - [x] internal/types/types.go 実装完了
   - Number, Symbol, Nil, String, Boolean, Cons
   - 各型のString()メソッド実装
-- [ ] internal/reader/lexer.go 実装
+- [X] internal/reader/lexer.go 実装
+- [X] internal/reader/lexer.goに対応したテストを書く
 - [ ] internal/reader/parser.go 実装
+- [ ] internal/reader/parser.goに対応したテストを書く
 - [ ] internal/repl/repl.go 実装
+- [ ] internal/reader/repl.goに対応したテストを書く
 - [ ] main.go 実装
-
-## 次回やること
-
-1. `internal/reader/lexer.go` の実装
-   - TokenType, Token, Position 型の定義
-   - Lexer構造体の実装
-   - NextToken()メソッドの実装
-2. `internal/reader/parser.go` の実装
-3. `internal/repl/repl.go` の実装
-4. `main.go` の実装
+- [ ] main.goに対応したテストを書く
 
 詳細は `design/M1-architecture.md` を参照。
 
