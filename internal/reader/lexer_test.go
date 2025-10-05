@@ -129,6 +129,51 @@ func TestLexer_WhitespaceSkipTest(t *testing.T) {
 	}
 }
 
+// 改行を含んだ文字列も行ける
+func TestLexer_MultilineString(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue string
+	}{
+		{
+			name:      "string with newline",
+			input:     "\"hello\nworld\"",
+			wantValue: "hello\nworld",
+		},
+		{
+			name:      "string with multiple newlines",
+			input:     "\"line1\nline2\nline3\"",
+			wantValue: "line1\nline2\nline3",
+		},
+		{
+			name: "multiline string literal",
+			input: `"first line
+second line
+third line"`,
+			wantValue: "first line\nsecond line\nthird line",
+		},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.input)
+			token, err := lexer.NextToken()
+
+			if err != nil {
+				t.Fatalf("test case %d unexpected error: %v", i, err)
+			}
+
+			if token.Type != STRING {
+				t.Errorf("test case %d Type = %v, want STRING", i, token.Type)
+			}
+
+			if token.Value != tt.wantValue {
+				t.Errorf("test case %d Value=%q, want=%q", i, token.Value, tt.wantValue)
+			}
+		})
+	}
+}
+
 // エラーケース
 
 func TestLexer_UnterminatedString(t *testing.T) {
