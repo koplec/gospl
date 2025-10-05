@@ -174,6 +174,71 @@ third line"`,
 	}
 }
 
+// 位置情報のテスト
+func TestLexer_Position(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		tokens []struct {
+			typ  TokenType
+			line int
+			col  int
+		}
+	}{
+		{
+			name:  "single line positions",
+			input: "(+ 1)",
+			tokens: []struct {
+				typ  TokenType
+				line int
+				col  int
+			}{
+				{LPAREN, 1, 1},
+				{SYMBOL, 1, 2},
+				{NUMBER, 1, 4},
+				{RPAREN, 1, 5},
+				{EOF, 1, 6},
+			},
+		},
+		{
+			name: "multiline positions",
+			input: `(+
+1
+2)`,
+			tokens: []struct {
+				typ  TokenType
+				line int
+				col  int
+			}{
+				{LPAREN, 1, 1},
+				{SYMBOL, 1, 2},
+				{NUMBER, 2, 1},
+				{NUMBER, 3, 1},
+				{RPAREN, 3, 2},
+				{EOF, 3, 3},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.input)
+			for i, want := range tt.tokens {
+				token, err := lexer.NextToken()
+				if err != nil {
+					t.Fatalf("token %d: unexpected error: %v", i, err)
+				}
+
+				if token.Pos.Line != want.line ||
+					token.Pos.Column != want.col {
+					t.Errorf("token %d: position=(%d, %d), want (%d, %d)",
+						i, token.Pos.Line, token.Pos.Column, want.line, want.col)
+				}
+			}
+		})
+	}
+}
+
 // エラーケース
 
 func TestLexer_UnterminatedString(t *testing.T) {
