@@ -8,10 +8,44 @@ Common Lisp寄りの実装に、TypeScript風の型システムを組み合わ�
 ## 設計方針
 
 - **Common Lispのサブセット**: 基本的なCommon Lispコードが動作することを目指す（完全互換ではない）
+- **Common Lisp仕様の尊重**: 可能な限りCommon Lispの仕様に従う
+  - 文字列リテラルは改行を含むことができる
+  - シンボルの大文字小文字の扱い（後で実装）
+  - nil と '() の同一性
+  - その他の言語仕様の細部
 - **段階的型付け（Gradual Typing）**: 型宣言はオプション。型なしでも動作し、型で制約することも可能
 - **Go連携**: Lisp内部からGo関数を呼び出せる
 - **Lisp-2**: Common Lispと同様に、関数と変数の名前空間を分離
 - **柔軟な設計**: 構文の詳細は実装しながら調整し、使いやすさを優先する
+
+## Common Lispとの主な相違点
+
+GoLispは実用性とGo連携を重視するため、以下の点でCommon Lispと異なります：
+
+### 実装済み/予定の相違点
+- **シンボルの大小文字**: 区別する（Go関数名との整合性のため）
+  - Common Lispでは `foo` = `FOO` だが、GoLispでは別のシンボル
+  - Go関数を呼び出す際に `fmt.Println` と `fmt.println` を区別する必要があるため
+- **文字列**: 改行を含むことができる（Common Lisp準拠）
+- **nil**: falseと空リストの両方を表す（Common Lisp準拠）
+
+### 今後検討が必要な点
+以下の機能は、実装時にCommon LispとGoの橋渡しをどう行うか設計が必要です：
+
+- **エラーハンドリング**: GoのerrorとCommon LispのCondition Systemの統合
+  - Go関数が返すerrorをどうLispのエラーとして扱うか
+  - `handler-case`などがGoのエラーも捕捉できるか
+- **型システム**: 段階的型付けとGoの静的型付けの相互変換
+  - Lispの`nil`をGo関数に渡す際の変換ルール
+  - Go関数の戻り値の型情報をLisp側でどう扱うか
+- **並行処理**: goroutine/チャネルのサポート（オプション機能として検討）
+  - Lispからgoroutineを起動する構文
+  - Goのチャネルとの連携
+- **HTTP/ネットワーク機能**: ソケット通信やWeb関連の機能
+  - Common Lisp標準仕様にはHTTP/ソケットAPIが含まれない
+  - Goの`net/http`, `net`パッケージをどう連携させるか
+  - RESTful API呼び出し、Webサーバー構築などのユースケース
+  - JSON/XML処理との統合（`encoding/json`など）
 
 ## 最終ゴール
 
