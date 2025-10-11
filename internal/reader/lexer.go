@@ -46,6 +46,8 @@ func NewLexer(input string) *Lexer {
 	}
 }
 
+// 次のトークンを読む
+// トークンタイプがILLEGALの時はerror
 func (l *Lexer) NextToken() (Token, error) {
 	//まず空白が1文字以上あるときは、スキップする
 	l.skipWhitespace()
