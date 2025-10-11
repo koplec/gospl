@@ -16,8 +16,14 @@
   - 各型のString()メソッド実装
 - [X] internal/reader/lexer.go 実装
 - [X] internal/reader/lexer.goに対応したテストを書く
-- [ ] internal/reader/parser.go 実装
-- [ ] internal/reader/parser.goに対応したテストを書く
+- [x] internal/reader/parser.go 実装完了
+  - parseExpr(): NUMBER, STRING, SYMBOL, LPAREN, QUOTE, エラー処理
+  - parseList(): リストのパース、空リスト対応
+  - Boolean特殊処理: 't' → Boolean, 'nil' → Nil
+  - Quote展開: 'x → (quote x)
+- [x] internal/reader/parser_test.go 実装完了
+  - 全テストパス
+  - Number, String, Symbol, Boolean, List, NestedList, Quote, Errors, MultilineString
 - [ ] internal/repl/repl.go 実装
 - [ ] internal/reader/repl.goに対応したテストを書く
 - [ ] main.go 実装
