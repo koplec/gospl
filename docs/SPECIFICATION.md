@@ -4,6 +4,7 @@
 
 Go言語でLispインタープリタを実装することで、Lispの思想を理解する。
 Common Lisp寄りの実装に、TypeScript風の型システムを組み合わせ、さらにGo言語との相互運用を可能にする。
+また、Goエコシステム（`go test`, `go mod`, `go build`など）と統合し、Goプロジェクトの一部として自然に利用できるようにする。
 
 ## 設計方針
 
@@ -16,6 +17,7 @@ Common Lisp寄りの実装に、TypeScript風の型システムを組み合わ�
 - **段階的型付け（Gradual Typing）**: 型宣言はオプション。型なしでも動作し、型で制約することも可能
 - **Go連携**: Lisp内部からGo関数を呼び出せる
 - **Lisp-2**: Common Lispと同様に、関数と変数の名前空間を分離
+- **Goエコシステム統合**: `go test`, `go mod`, `go build`などの既存ツールと連携
 - **柔軟な設計**: 構文の詳細は実装しながら調整し、使いやすさを優先する
 
 ## Common Lispとの主な相違点
@@ -64,6 +66,7 @@ GoLispは実用性とGo連携を重視するため、以下の点でCommon Lisp�
   - リスト（list）
   - ベクター/配列（vector/array）
   - ハッシュテーブル（hash-table）
+  - 構造体（struct）- defstructで定義
 
 #### 特殊形式
 - `quote` / `'` - クォート
@@ -610,9 +613,9 @@ NIL
 - バッククォートの実装が鍵
 - `&rest`（可変長引数）のサポートが必要
 
-### M7: より多くのCommon Lisp関数
+### M7: より多くのCommon Lisp関数 + テストフレームワーク
 
-**目標**: よく使われるCommon Lisp関数を実装
+**目標**: よく使われるCommon Lisp関数を実装 + `go test`統合
 
 **実装内容**:
 - 高階関数
@@ -638,6 +641,14 @@ NIL
 - 入出力
   - `print`, `princ`, `prin1`
   - `format`（簡易版）
+- **テストフレームワーク**（Goエコシステム統合）
+  - `deftest` - テスト定義
+  - アサーション関数
+    - `assert-equal`, `assert-true`, `assert-false`
+    - `assert-nil`, `assert-not-nil`
+    - `assert-error`, `assert-type`
+  - Go testランナーとの統合
+    - `runtime.RunTestFiles()`
 
 **動作例**:
 ```lisp
@@ -671,6 +682,39 @@ NIL
 > (format t "Hello, ~a!~%" "World")
 Hello, World!
 NIL
+
+;; テストフレームワーク
+> (deftest test-arithmetic
+    "Test basic arithmetic"
+    (assert-equal 3 (+ 1 2))
+    (assert-equal 10 (* 2 5)))
+TEST-ARITHMETIC
+
+> (deftest test-list-ops
+    "Test list operations"
+    (assert-equal '(1 2 3) (list 1 2 3))
+    (assert-equal 1 (car '(1 2 3))))
+TEST-LIST-OPS
+
+;; Go側から実行
+;; go test ./... でLispテストも実行される
+```
+
+**Go側の使用例**:
+```go
+// runtime/runtime_test.go
+func TestLispTests(t *testing.T) {
+    env := runtime.New()
+    results := env.RunTestFiles("../test")
+
+    for _, result := range results {
+        t.Run(result.Name, func(t *testing.T) {
+            if !result.Passed {
+                t.Errorf("%s", result.Message)
+            }
+        })
+    }
+}
 ```
 
 ### M8: 高度な型推論とユニオン型
@@ -770,9 +814,9 @@ PROCESS
 3. 変数の型推論（推奨）
 4. Type Narrowing（オプション、実装が複雑）
 
-### M9: Go連携機能
+### M9: Go連携機能 + CLIツール
 
-**目標**: LispとGoの相互運用を実現
+**目標**: LispとGoの相互運用を実現 + `gospl`コマンド
 
 **実装方針**: 文字列ベースの動的呼び出しではなく、事前登録制を採用します。
 
@@ -782,11 +826,28 @@ PROCESS
   - String ↔ string
   - List ↔ []interface{}
   - Boolean ↔ bool
+  - Struct ↔ Go struct（構想中）
 - **Go関数の事前登録**（推奨方式）
   - Go側で関数を登録
   - 型情報の保持
   - 引数の自動変換
 - Lisp関数をGoから呼び出し
+- **Go structとの相互運用**（構想中）
+  - Go structをLispから操作
+    - `(go:field obj 'FieldName)` - フィールド読み取り
+    - `(go:set-field obj 'FieldName value)` - フィールド書き込み
+  - Go structの型登録
+    - `env.RegisterType("Point", Point{})`
+  - Lisp defstructとGoの自動マッピング（将来的に）
+- **CLIツール**（Goエコシステム統合）
+  - `gospl` コマンドの実装
+    - `gospl run` - スクリプト実行
+    - `gospl build` - バイナリ生成
+    - `gospl test` - テスト実行
+    - `gospl fmt` - コードフォーマット
+    - `gospl check` - 型チェック
+  - `embed.FS` サポート
+  - `runtime` パッケージの公開API整備
 
 **使用例（Go側で関数を登録）**:
 ```go
@@ -795,6 +856,19 @@ env.RegisterFunc("println", fmt.Println)
 env.RegisterFunc("sprintf", fmt.Sprintf)
 env.RegisterFunc("add-go", func(a, b int) int {
     return a + b
+})
+
+// Go structを登録（構想中）
+type Point struct {
+    X int
+    Y int
+}
+env.RegisterType("Point", Point{})
+env.RegisterFunc("new-point", func(x, y int) Point {
+    return Point{X: x, Y: y}
+})
+env.RegisterFunc("distance", func(p Point) float64 {
+    return math.Sqrt(float64(p.X*p.X + p.Y*p.Y))
 })
 
 // Lispコードを実行
@@ -819,6 +893,22 @@ NIL
 > (add-go 10 20)
 30
 
+;; Go structを操作（構想中）
+> (defvar p (new-point 3 4))
+P
+
+> (go:field p 'X)
+3
+
+> (distance p)
+5.0
+
+> (go:set-field p 'X 5)
+5
+
+> (distance p)
+6.4031242374328485
+
 ;; Lisp関数を定義
 > (defun greet (name)
     (println (sprintf "Hello, %s!" name)))
@@ -829,10 +919,38 @@ Hello, World!
 NIL
 ```
 
+**CLI使用例**:
+```bash
+# スクリプト実行
+gospl run scripts/hello.lisp
+
+# バイナリ生成
+gospl build -o myapp scripts/main.lisp
+
+# テスト実行
+gospl test
+
+# 型チェック
+gospl check scripts/*.lisp
+```
+
+**Go埋め込み例**:
+```go
+//go:embed scripts/main.lisp
+var mainScript string
+
+func main() {
+    env := runtime.New()
+    env.RegisterFunc("println", fmt.Println)
+    env.EvalString(mainScript)
+}
+```
+
 **実装のポイント**:
 - 文字列ベースの `(go:call "fmt.Println" ...)` は実装しない
 - 事前登録制により型安全性を確保
 - リフレクションの使用を最小限に
+- CLIツールで開発体験を向上
 
 ### M10: 高度なマクロ機能
 
@@ -844,6 +962,15 @@ NIL
 - より複雑なマクロの実装例
   - `with-gensyms`
   - `defstruct`（簡易版）
+- **defstruct機能**
+  - 基本的なstruct定義
+  - アクセサ関数の自動生成（`structname-field`）
+  - コンストラクタの自動生成（`make-structname`）
+  - 述語関数の自動生成（`structname-p`）
+  - 型情報の保持
+  - **Go連携オプション**（構想中、将来的に実装）
+    - `:go-type`オプションでGoのstructとマッピング
+    - 型情報の相互変換
 - マクロのデバッグサポート
   - `macroexpand-all`
   - マクロ展開のトレース
@@ -878,6 +1005,38 @@ Y
 2
 > y
 1
+
+;; defstruct の基本的な使用例
+> (defstruct point
+    (x 0 :type integer)
+    (y 0 :type integer))
+POINT
+
+> (defvar p (make-point :x 10 :y 20))
+P
+
+> (point-x p)
+10
+
+> (point-y p)
+20
+
+> (point-p p)
+T
+
+> (setf (point-x p) 30)
+30
+
+> (point-x p)
+30
+
+;; Go連携の将来的な構想（実装はM9以降）
+> (defstruct (point :go-type t)
+    (x 0 :type integer)
+    (y 0 :type integer))
+POINT
+
+;; この構造体はGoのstructとして扱える（構想）
 ```
 
 ### M11: データ構造（配列、ハッシュテーブル）
@@ -928,9 +1087,9 @@ HT
 T
 ```
 
-### M12: パッケージシステム
+### M12: パッケージシステム + パッケージ管理
 
-**目標**: 名前空間の管理を可能にする
+**目標**: 名前空間の管理と`gospl mod`コマンド
 
 **実装内容**:
 - `defpackage`
@@ -949,6 +1108,15 @@ T
   - `find-package`
   - `package-name`
   - `export`, `import`
+- **パッケージ管理**（Goエコシステム統合）
+  - `gospl.mod` ファイル形式の定義
+  - `gospl mod` コマンド群
+    - `gospl mod init` - プロジェクト初期化
+    - `gospl mod download` - 依存パッケージダウンロード
+    - `gospl mod tidy` - 依存整理
+    - `gospl mod verify` - 依存検証
+  - リモートパッケージの解決とダウンロード
+  - `require` による外部パッケージの読み込み
 
 **動作例**:
 ```lisp
@@ -970,6 +1138,35 @@ MAIN
 > (myapp:main)
 Hello from myapp!
 NIL
+
+;; 外部パッケージの使用
+> (require :gospl-http)
+T
+
+> (defun fetch-data (url)
+    (http:get url))
+FETCH-DATA
+```
+
+**パッケージ管理の使用例**:
+```bash
+# プロジェクト初期化
+gospl mod init github.com/user/myapp
+
+# gospl.modが生成される
+# (module github.com/user/myapp
+#   :version "0.1.0"
+#   :go-version "1.24"
+#   :dependencies ())
+
+# 依存パッケージの追加（gospl.modを編集）
+# :dependencies ((github.com/koplec/gospl-http "1.2.0"))
+
+# 依存パッケージのダウンロード
+gospl mod download
+
+# 不要な依存を削除
+gospl mod tidy
 ```
 
 ### M13: 高度な制御構造とキーワード引数
@@ -1254,48 +1451,305 @@ Error: x must be non-negative, got -1
 - 継承は基本的なスロットの継承のみ
 - `trace`はデバッグに便利だが、オプション機能
 
-## プロジェクト構造（予定）
+## Goエコシステム統合
+
+### 基本方針
+
+GoLispはGoプロジェクトの一部として自然に利用できることを目指します。
+`go test`, `go mod`, `go build`などの既存ツールと連携し、CI/CD統合を容易にします。
+
+### 1. テストフレームワーク（`go test` 統合）
+
+**目標**: Lispテストを`go test`コマンドで実行可能にする
+
+**使用例（Lisp側）**:
+```lisp
+;; test/math_test.lisp
+(deftest test-add
+  "Test addition function"
+  (assert-equal 3 (add 1 2))
+  (assert-equal 0 (add -1 1))
+  (assert-equal -5 (add -2 -3)))
+
+(deftest test-multiply
+  "Test multiplication"
+  (assert-equal 6 (* 2 3))
+  (assert-equal 0 (* 0 5)))
+
+(deftest test-list-operations
+  "Test basic list operations"
+  (assert-equal '(1 2 3) (list 1 2 3))
+  (assert-equal 1 (car '(1 2 3)))
+  (assert-equal '(2 3) (cdr '(1 2 3))))
+```
+
+**使用例（Go側）**:
+```go
+// internal/runtime/runtime_test.go
+package runtime_test
+
+import (
+    "testing"
+    "github.com/koplec/gospl/runtime"
+)
+
+func TestLispTests(t *testing.T) {
+    env := runtime.New()
+
+    // test/ ディレクトリの *_test.lisp ファイルを実行
+    results := env.RunTestFiles("../../test")
+
+    for _, result := range results {
+        t.Run(result.Name, func(t *testing.T) {
+            if !result.Passed {
+                t.Errorf("%s", result.Message)
+            }
+        })
+    }
+}
+```
+
+**実行方法**:
+```bash
+go test ./...  # GoとLispのテストをまとめて実行
+go test -v ./internal/runtime  # Lispテストの詳細表示
+```
+
+**テスト用アサーション関数**:
+```lisp
+(assert-equal expected actual)      ; 値の等価性
+(assert-true value)                 ; 真値チェック
+(assert-false value)                ; 偽値チェック
+(assert-nil value)                  ; nilチェック
+(assert-not-nil value)              ; 非nilチェック
+(assert-error (expr))               ; エラーが発生することを確認
+(assert-type 'integer value)        ; 型チェック
+```
+
+### 2. CLIツール（`gospl` コマンド）
+
+**目標**: `go run`や`go build`のようなワークフローを実現
+
+**インストール**:
+```bash
+go install github.com/koplec/gospl/cmd/gospl@latest
+```
+
+**使用例**:
+```bash
+# REPL起動
+gospl
+
+# スクリプト実行
+gospl run main.lisp
+gospl run scripts/hello.lisp
+
+# 実行ファイル生成
+gospl build -o myapp main.lisp
+./myapp
+
+# テスト実行
+gospl test
+gospl test -v  # 詳細表示
+
+# フォーマット
+gospl fmt main.lisp
+gospl fmt -w main.lisp  # ファイル上書き
+
+# 型チェック
+gospl check main.lisp
+```
+
+### 3. パッケージ管理（`gospl mod`）
+
+**目標**: `go mod`風のパッケージ管理システム
+
+**gospl.mod ファイル**:
+```lisp
+;; gospl.mod
+(module github.com/user/myapp
+  :version "0.1.0"
+  :go-version "1.24"
+  :dependencies
+    ((github.com/koplec/gospl-http "1.2.0")
+     (github.com/koplec/gospl-json "2.0.1")
+     (github.com/koplec/gospl-db "0.5.0")))
+```
+
+**コマンド**:
+```bash
+gospl mod init github.com/user/myapp  # gospl.mod 作成
+gospl mod download                    # 依存パッケージダウンロード
+gospl mod tidy                        # 不要な依存を削除
+gospl mod verify                      # 依存パッケージの検証
+```
+
+**Lispコードでのパッケージ使用**:
+```lisp
+(require :gospl-http)
+(require :gospl-json)
+
+(defun fetch-data (url)
+  (let ((response (http:get url)))
+    (json:parse (http:body response))))
+```
+
+### 4. Go埋め込み（embed）との統合
+
+**使用例**:
+```go
+package main
+
+import (
+    _ "embed"
+    "github.com/koplec/gospl/runtime"
+)
+
+//go:embed scripts/main.lisp
+var mainScript string
+
+//go:embed scripts/*.lisp
+var scripts embed.FS
+
+func main() {
+    env := runtime.New()
+
+    // Go関数を登録
+    env.RegisterFunc("println", fmt.Println)
+    env.RegisterFunc("http-get", httpGet)
+
+    // 埋め込みスクリプトをロード
+    env.EvalString(mainScript)
+
+    // または複数ファイルをロード
+    env.LoadFromFS(scripts, "scripts")
+
+    // Lisp関数を呼び出し
+    result := env.Call("main")
+}
+```
+
+### 5. ディレクトリ構造
 
 ```
-golisp/
-├── SPECIFICATION.md          # この文書
-├── README.md                 # プロジェクト概要
-├── go.mod                    # Go modules
-├── main.go                   # エントリーポイント
-├── repl/
-│   └── repl.go              # REPL実装
-├── reader/
-│   ├── lexer.go             # トークナイザ
-│   └── parser.go            # パーサ
-├── types/
-│   ├── types.go             # S式のデータ型
-│   └── type_system.go       # 型システム
-├── typechecker/
-│   ├── checker.go           # 静的型チェッカー
-│   └── inference.go         # 型推論
-├── eval/
-│   ├── eval.go              # 評価器
-│   ├── env.go               # 環境
-│   └── builtins.go          # 組み込み関数
-├── special/
-│   └── special.go           # 特殊形式
-├── macro/
-│   └── macro.go             # マクロシステム
-├── interop/
-│   └── go_interop.go        # Go連携
-├── package/
-│   └── package.go           # パッケージシステム
-├── clos/
-│   ├── class.go             # クラスシステム（簡易版）
-│   └── method.go            # メソッドディスパッチ
-└── stdlib/
-    ├── list.go              # リスト関数
-    ├── number.go            # 数値関数
-    ├── io.go                # 入出力
-    ├── string.go            # 文字列関数
-    ├── control.go           # 制御構造（loop, case等）
-    └── error.go             # エラーハンドリング
+gospl/
+├── go.mod                   # Go modules（既存）
+├── gospl.mod                # Lispパッケージ管理（新規）
+├── cmd/
+│   └── gospl/              # CLIツール
+│       └── main.go
+├── runtime/                # Lisp実行環境（公開API）
+│   ├── runtime.go
+│   ├── runtime_test.go
+│   └── testrunner.go       # Lispテストランナー
+├── scripts/                # Lispスクリプト
+│   ├── main.lisp
+│   └── lib/
+│       └── utils.lisp
+├── test/                   # Lispテスト
+│   ├── math_test.lisp
+│   ├── list_test.lisp
+│   └── type_test.lisp
+├── internal/               # 内部実装
+│   ├── reader/
+│   │   ├── lexer.go
+│   │   ├── lexer_test.go
+│   │   └── parser.go
+│   ├── types/
+│   │   ├── types.go
+│   │   └── type_system.go
+│   ├── typechecker/
+│   │   ├── checker.go
+│   │   └── inference.go
+│   ├── eval/
+│   │   ├── eval.go
+│   │   ├── env.go
+│   │   └── builtins.go
+│   ├── special/
+│   │   └── special.go
+│   ├── macro/
+│   │   └── macro.go
+│   ├── interop/
+│   │   └── go_interop.go
+│   ├── package/
+│   │   └── package.go
+│   ├── clos/
+│   │   ├── class.go
+│   │   └── method.go
+│   └── stdlib/
+│       ├── list.go
+│       ├── number.go
+│       ├── io.go
+│       ├── string.go
+│       ├── control.go
+│       └── error.go
+└── docs/
+    ├── SPECIFICATION.md
+    └── design/
 ```
+
+### 6. CI/CD統合例
+
+**GitHub Actions**:
+```yaml
+name: Test
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      # Goテスト（Lispテストを含む）
+      - name: Run tests
+        run: go test -v ./...
+
+      # Lispの型チェック
+      - name: Type check
+        run: |
+          go install ./cmd/gospl
+          gospl check scripts/*.lisp
+```
+
+### 実装フェーズ
+
+#### Phase 1: テスト統合（M7頃）
+- Lispテストフレームワークの実装
+  - `deftest`, アサーション関数
+- Go testランナーとの統合
+  - `runtime.RunTestFiles()`
+- 基本的なテストコマンド
+  - `gospl test`
+
+#### Phase 2: CLI基盤（M9頃）
+- `gospl` コマンドの実装
+  - `gospl run`, `gospl build`
+- Go連携の強化
+  - `embed.FS`サポート
+  - `runtime.New()` API整備
+
+#### Phase 3: パッケージ管理（M12頃）
+- `gospl.mod` パーサー
+- `gospl mod` コマンド群
+- 依存関係解決
+- リモートパッケージのダウンロード
+
+### Goエコシステム統合の利点
+
+1. **既存ツールチェーンの活用**: Goの成熟したツールをそのまま利用
+2. **CI/CD統合が容易**: GitHub Actions, GitLab CIなどで標準的に使える
+3. **Go開発者に親しみやすい**: 学習コストが低い
+4. **テストの一元管理**: GoとLispのテストをまとめて実行・レポート
+5. **バイナリ埋め込み**: `go:embed`でスクリプトを実行ファイルに含められる
+6. **依存管理の統一**: `go.mod`と`gospl.mod`を並行利用
+
+## プロジェクト構造（詳細）
+
+上記「5. ディレクトリ構造」を参照。
 
 ## 参考資料
 
@@ -1449,10 +1903,11 @@ type Environment struct {
 | M1-M3 | 20% | 基本的な再帰関数 |
 | M4-M5 | 35% | リスト処理、条件分岐 |
 | M6 | **60%** | 基本的なマクロ例 |
-| M7 | 65% | 高階関数を使ったコード |
+| M7 | 65% | 高階関数、テストフレームワーク |
 | M8 | 70% | 型システムを除くほとんど |
-| M9-M11 | 80% | データ構造を使ったコード |
-| M12 | 85% | パッケージを使ったコード |
+| M9 | 75% | Go連携、CLIツール |
+| M10-M11 | 80% | データ構造を使ったコード |
+| M12 | 85% | パッケージ管理含む |
 | **M13** | **90%** | PAIPのほとんどの章 |
 | **M14** | **95%+** | エラー処理、OOP含む完全版 |
 
@@ -1465,9 +1920,10 @@ type Environment struct {
 5. **Lispらしさ**: マクロでコードを生成するLispの本質を学べる
 6. **実行前エラー検出**: M4b/M8でPHP/Pythonより安全に
 7. **TypeScript風の使用感**: M8で現代的な型システム
-8. **PAIP/On Lisp対応**: M13で90%以上のコードが動作可能
-9. **実用性**: M14でエラー処理とOOPにより本格的な開発が可能
+8. **Goエコシステム統合**: M7, M9, M12でGoツールチェーンと完全統合
+9. **PAIP/On Lisp対応**: M13で90%以上のコードが動作可能
+10. **実用性**: M14でエラー処理とOOPにより本格的な開発が可能
 
 ---
 
-最終更新: 2025-10-02
+最終更新: 2025-10-08
