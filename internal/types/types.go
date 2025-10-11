@@ -1,6 +1,9 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Expr interface {
 	String() string
@@ -59,5 +62,28 @@ func (b Boolean) String() string {
 }
 
 func (c *Cons) String() string {
-	return "(...)" //いったん簡単表示
+	var elements []string
+	//Exprインタフェースとして、ループでいろいろな型に対応させるようにする
+	current := Expr(c)
+
+	for {
+		//currentがConsの場合
+		//型アサーションで、*Consかどうかチェック
+		if cons, ok := current.(*Cons); ok {
+			elements = append(elements, cons.Car.String())
+			current = cons.Cdr
+			continue
+		}
+
+		//currentがNilの場合（リストの終わり）
+		if _, ok := current.(*Nil); ok {
+			//currentはNilなのでリストの文字列表現には書かない
+			return "(" + strings.Join(elements, " ") + ")"
+		}
+
+		//それ以外（リストじゃなくて、cons構造で、末尾がNilではないとき
+		// （不完全リスト improper listと呼ぶ）
+		//(1 . 2)や、(1 2 . 3)など
+		return "(" + strings.Join(elements, " ") + " . " + current.String() + ")"
+	}
 }
