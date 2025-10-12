@@ -24,13 +24,16 @@
 - [x] internal/reader/parser_test.go 実装完了
   - 全テストパス
   - Number, String, Symbol, Boolean, List, NestedList, Quote, Errors, MultilineString
-- [ ] internal/repl/repl.go 実装
-- [ ] internal/reader/repl.goに対応したテストを書く
-- [ ] main.go 実装
-- [ ] main.goに対応したテストを書く
+- [x] internal/repl/repl.go 実装完了
+  - Read-Eval-Print-Loop (M1ではEvalは恒等関数)
+  - エラー時も継続実行
+  - Ctrl+Dで終了
+- [x] cmd/gospl/main.go 実装完了
+
 
 詳細は `design/M1-architecture.md` を参照。
 
 ## メモ
 
-- (ここに気づいたことや疑問点を記録)
+- M1完成: S式のパース・表示までできるようになった
+- 次はEvaluatorとEnvironmentの実装
