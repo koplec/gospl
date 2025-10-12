@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/koplec/gospl/internal/eval"
 	"github.com/koplec/gospl/internal/reader"
 )
 
 func Start() {
 	scanner := bufio.NewScanner(os.Stdin)
+
+	env := eval.NewGlobalEnvironment()
 
 	fmt.Println("Gospl REPL")
 
@@ -30,7 +33,12 @@ func Start() {
 			continue
 		}
 
-		result := expr
+		result, err := eval.Eval(expr, env)
+		if err != nil {
+			fmt.Printf("Eval error: %v\n", err)
+			continue
+		}
+
 		fmt.Println(result.String())
 	}
 }
