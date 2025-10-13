@@ -64,9 +64,56 @@
 - evalArgsでの無限ループバグ（current = cons.Cdrを忘れていた）
 - テスト駆動開発の重要性を実感
 
-### M3: 関数とクロージャ (次のステップ)
+### M3: 関数とクロージャ（進行中）
 
-詳細は `design/M1-architecture.md`, `design/M2-architecture.md` を参照。
+#### 2025-10-13
+
+**実装完了:**
+- [x] Lambda型の定義 (internal/eval/lambda.go)
+  - Lambda構造体: Params, Body, Env
+  - String()メソッド: `#<FUNCTION>`
+  - 循環参照対策: evalパッケージに配置
+- [x] 特殊形式の基盤実装 (internal/eval/special.go)
+  - 定数定義: SpecialFormQuote, If, Lambda, Defun
+  - isSpecialForm(): 特殊形式判定
+  - evalSpecialForm(): ディスパッチャ
+- [x] **quote実装完了** (ステップ2)
+  - evalQuote(): 引数を評価せずに返す
+  - 引数チェック（1つのみ）
+  - テスト実装: 正常系5ケース、異常系2ケース
+  - すべてのテストパス✅
+- [x] evalList()の更新 (internal/eval/eval.go)
+  - 特殊形式チェックを追加
+  - 先頭がシンボル → 特殊形式 → evalSpecialForm()
+  - それ以外 → 通常の関数適用
+- [x] ADR作成 (docs/adr/0001-symbol-case-sensitivity.md)
+  - シンボルの大小文字を区別する設計判断を記録
+  - Go連携を優先、Common Lisp互換性は二の次
+
+**動作確認:**
+```lisp
+> (quote x)
+x
+> (quote (1 2 3))
+(1 2 3)
+> (quote (+ 1 2))
+(+ 1 2)  ; 評価されない
+```
+
+**次のステップ:**
+- [ ] ステップ3: if の実装
+- [ ] ステップ4: lambda の実装
+- [ ] ステップ5: defun の実装
+- [ ] ステップ6: funcall と apply
+- [ ] ステップ7: 統合テスト
+
+**学び:**
+- 特殊形式は引数を評価しない（通常の関数と異なる）
+- `args`は常に「引数のリスト」であり、引数そのものではない
+- `(quote (a b c))` の場合、argsは `((a b c))` というネストしたリスト
+- ADR（Architecture Decision Record）の重要性
+
+詳細は `design/M3-architecture.md` を参照。
 
 ## メモ
 
