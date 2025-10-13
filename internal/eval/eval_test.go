@@ -23,6 +23,11 @@ func TestEval(t *testing.T) {
 		{"divide", "(/ 10 2)", "5"},
 		{"unary minus", "(- 5)", "-5"},
 		{"minus", "-10", "-10"},
+		{"quote symbol", "(quote x)", "x"},
+		{"quote list", "(quote (1 2 3))", "(1 2 3)"},
+		{"quote nested list", "(quote ((1 2) (3 4)))", "((1 2) (3 4))"},
+		{"quote expression", "(quote (+ 1 2 3))", "(+ 1 2 3)"},
+		{"quote number", "(quote 123)", "123"},
 	}
 
 	for _, tt := range tests {
@@ -56,6 +61,8 @@ func TestEval_Errors(t *testing.T) {
 		{"type error", `(+ 1 "hello")`},
 		{"division by zero", "(/ 5 0)"},
 		{"not a function", "(42 1 2)"},
+		{"quote no args", "(quote)"},
+		{"quote too many args", "(quote x y)"},
 	}
 
 	for _, tt := range tests {

@@ -36,11 +36,27 @@ func evalList(list *types.Cons, env *Environment) (types.Expr, error) {
 	// Goのnilポインタチェック（通常は発生しないはず、防衛的に記述）
 	// 空リストは*types.Nil{}として表現されるので、Eval内のcase *types.Nilで対応しているため、個々には到達しないはず
 	if list == nil {
-		return nil, fmt.Errorf("cannot evaluate empty ")
+		return nil, fmt.Errorf("cannot evaluate empty list")
+	}
+
+	//先頭要素を取得
+	//例えば、(hoge bar baz)のhoge
+	first := list.Car
+
+	//シンボルなら、special formかどうかを確認
+	if sym, ok := first.(types.Symbol); ok {
+		if isSpecialForm(sym.Name) {
+			//list.Cdrについて
+			//もとのlistが(hoge bar baz)だったら(bar baz)が渡される
+			//quoteの時は難しくて、(quote (a b c))だったら((a b c))が渡される。
+			//(quote x)だったら(cons 'quote (cons 'x nil))という構造なので、
+			// list.Cdrは(x)=(cons 'x nil)
+			return evalSpecialForm(sym.Name, list.Cdr, env)
+		}
 	}
 
 	//先頭要素(関数)を評価
-	fn, err := Eval(list.Car, env)
+	fn, err := Eval(first, env)
 	if err != nil {
 		return nil, err
 	}
