@@ -61,7 +61,68 @@ func evalQuote(args types.Expr) (types.Expr, error) {
 }
 
 func evalIf(args types.Expr, env *Environment) (types.Expr, error) {
-	return nil, fmt.Errorf("if not implemented yet")
+	//(if condition then-expr else-expr )
+	/// else-exprは省略可能
+
+	cons, ok := args.(*types.Cons)
+	if !ok {
+		return nil, fmt.Errorf("if requires at least 2 arguments")
+	}
+
+	// 条件式
+	condition := cons.Car
+
+	// then, else
+	restCons, ok := cons.Cdr.(*types.Cons)
+	if !ok {
+		return nil, fmt.Errorf("if requires at least 2 arguments")
+	}
+	thenExpr := restCons.Car
+
+	var elseExpr types.Expr = &types.Nil{}
+	if elseCons, ok := restCons.Cdr.(*types.Cons); ok {
+		elseExpr = elseCons.Car
+
+		// 引数が３つより多い場合はエラー
+		if _, ok := elseCons.Cdr.(*types.Nil); !ok {
+			return nil, fmt.Errorf("if requires at most 3 arguments")
+		}
+	} else if _, ok := restCons.Cdr.(*types.Nil); !ok {
+		//例えば
+		// else節がない場合、引数２つ(if t 'aa)みたいなとき
+		// これは(cons 'if (cons t (cons 'aa nil)))
+		// このときargsに渡されるのは (const t (cons aa 'nil))
+		// すなわちrestConsは、(cons 'aa nil))
+		// するとrestCons.Cdrは、NILになる
+		//では、
+		// (if t 1 . 2)の場合、不正であるとき
+		// (cons 'if (cons t (cons 1 2)))なので
+		// argsは、(cons t (cons 1 2))
+		// restConsは(cons 1 2)
+		// するとrestCons.CdrはNILにならない
+		return nil, fmt.Errorf("if: invalid argument list")
+	}
+
+	// 条件式の評価
+	condResult, err := Eval(condition, env)
+	if err != nil {
+		return nil, err
+	}
+
+	//条件式の真偽判定
+	// NILとBoolean{Value:false}に注意
+	isFalse := false
+	if _, ok := condResult.(*types.Nil); ok {
+		isFalse = true
+	} else if b, ok := condResult.(types.Boolean); ok && !b.Value {
+		isFalse = true
+	}
+
+	if !isFalse { //すなわち if true
+		return Eval(thenExpr, env)
+	} else {
+		return Eval(elseExpr, env)
+	}
 }
 
 func evalDefun(args types.Expr, evn *Environment) (types.Expr, error) {
