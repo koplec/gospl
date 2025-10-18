@@ -126,3 +126,58 @@ func builtinDiv(args []types.Expr) (types.Expr, error) {
 
 	return types.Number{Value: result}, nil
 }
+
+func builtinFuncall(args []types.Expr) (types.Expr, error) {
+	//(funcall (lambda (x) (* x x)) 5)
+	if len(args) < 1 {
+		return nil, fmt.Errorf("funcall requires at least 1 argument")
+	}
+
+	fn := args[0]
+	fnArgs := args[1:] //argsの大きさが２以上だったらダメになるのでは？
+
+	return apply(fn, fnArgs)
+}
+
+func builtinApply(args []types.Expr) (types.Expr, error) {
+	//(appln fn (1 2 3))のように引数をlistで渡す
+	if len(args) != 2 {
+		return nil, fmt.Errorf("apply requires exactly 2 arguments")
+	}
+
+	fn := args[0]
+
+	//第２引数はリスト
+	argList, err := listToSlice(args[1])
+
+	if err != nil {
+		return nil, err
+	}
+	return apply(fn, argList)
+}
+
+func listToSlice(expr types.Expr) ([]types.Expr, error) {
+	if _, ok := expr.(*types.Nil); ok {
+		return []types.Expr{}, nil
+	}
+
+	var result []types.Expr
+	current := expr
+
+	for {
+		if _, ok := current.(*types.Nil); ok {
+			break
+		}
+
+		cons, ok := current.(*types.Cons)
+		if !ok {
+			return nil, fmt.Errorf("not a proper list")
+		}
+
+		result = append(result, cons.Car)
+		current = cons.Cdr
+	}
+
+	return result, nil
+
+}

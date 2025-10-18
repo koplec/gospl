@@ -26,6 +26,13 @@ func NewGlobalEnvironment() *Environment {
 	env.Set("-", BuiltinFunc{Name: "-", Fn: builtinSub})
 	env.Set("*", BuiltinFunc{Name: "*", Fn: builtinMul})
 	env.Set("/", BuiltinFunc{Name: "/", Fn: builtinDiv})
+	env.Set("apply", BuiltinFunc{
+		Name: "apply", Fn: builtinApply,
+	})
+	env.Set("funcall", BuiltinFunc{
+		Name: "funcall",
+		Fn:   builtinFuncall,
+	})
 
 	return env
 }

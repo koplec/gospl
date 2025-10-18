@@ -132,6 +132,7 @@ func applyLambda(lambda *Lambda, args []types.Expr) (types.Expr, error) {
 	}
 
 	// 新しい環境を作成 クロージャの環境を親とする
+	// クロージャの環境とは、lambdaを定義したときのEnvである。
 	newEnv := NewEnvironment(lambda.Env)
 
 	//仮引数に実引数を束縛
