@@ -125,10 +125,96 @@ func evalIf(args types.Expr, env *Environment) (types.Expr, error) {
 	}
 }
 
-func evalDefun(args types.Expr, evn *Environment) (types.Expr, error) {
-	return nil, fmt.Errorf("defun not implemented yet")
+func evalDefun(args types.Expr, env *Environment) (types.Expr, error) {
+	// (defun name (params...) body)
+	cons, ok := args.(*types.Cons)
+	if !ok {
+		return nil, fmt.Errorf("defun requires at least 3 arguments")
+	}
+
+	// 関数名
+	name, ok := cons.Car.(types.Symbol)
+	if !ok {
+		return nil, fmt.Errorf("function name must be a symbol, go %T", cons.Car)
+	}
+
+	// 残り ((params...) body)
+	rest, ok := cons.Cdr.(*types.Cons)
+	if !ok {
+		return nil, fmt.Errorf("function params and body must be dfined")
+	}
+
+	lambda, err := evalLambda(rest, env)
+	if err != nil {
+		return nil, err
+	}
+
+	//環境に登録
+	env.Set(name.Name, lambda)
+
+	//シンボルを返す
+	return name, nil
 }
 
 func evalLambda(args types.Expr, env *Environment) (types.Expr, error) {
-	return nil, fmt.Errorf("lambda not implemented yet")
+	// (lambda (params...) body)
+	// defunの構造とほとんど同じ
+	cons, ok := args.(*types.Cons)
+	if !ok {
+		return nil, fmt.Errorf("lambda requires at least 2 arguments")
+	}
+
+	//仮引数リストを解析
+	params, err := parseParams(cons.Car)
+	if err != nil {
+		return nil, err
+	}
+
+	//関数本体
+	rest, ok := cons.Cdr.(*types.Cons)
+	if !ok {
+		return nil, fmt.Errorf("lambda requires a body ")
+	}
+
+	body := rest.Car //いったん1つの式のみ対応
+
+	//クロージャを作成
+	return &Lambda{
+		Params: params,
+		Body:   body,
+		Env:    env, //定義時の環境を保持
+	}, nil
+}
+
+func parseParams(expr types.Expr) ([]string, error) {
+	//空リストのとき
+	// ()で渡されているとき (params..)の中身のparams...がないとき
+	if _, ok := expr.(*types.Nil); ok {
+		return []string{}, nil
+	}
+
+	var params []string
+	current := expr
+
+	for {
+		if _, ok := current.(*types.Nil); ok {
+			break
+		}
+
+		cons, ok := current.(*types.Cons) //これどういう場合？
+		if !ok {
+			return nil, fmt.Errorf("invalid parameter list")
+		}
+
+		//パラメータはシンボルでないといけない
+		sym, ok := cons.Car.(types.Symbol)
+		if !ok {
+			return nil, fmt.Errorf("parameter must be a symbol, got %T", cons.Car)
+		}
+
+		params = append(params, sym.Name)
+		current = cons.Cdr
+	}
+
+	return params, nil
 }

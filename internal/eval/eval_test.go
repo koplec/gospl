@@ -28,6 +28,9 @@ func TestEval(t *testing.T) {
 		{"quote nested list", "(quote ((1 2) (3 4)))", "((1 2) (3 4))"},
 		{"quote expression", "(quote (+ 1 2 3))", "(+ 1 2 3)"},
 		{"quote number", "(quote 123)", "123"},
+		{"lambda", "((lambda (x) (+ x 2)) 3)", "5"},
+		{"defun basic", "(defun some-function-name (a b) (+ a b))", "some-function-name"},
+		{"nested lambda", "((lambda (x) ((lambda (y) (+ x y)) 3)) 9)", "12"},
 	}
 
 	for _, tt := range tests {
@@ -63,6 +66,8 @@ func TestEval_Errors(t *testing.T) {
 		{"not a function", "(42 1 2)"},
 		{"quote no args", "(quote)"},
 		{"quote too many args", "(quote x y)"},
+		{"too many args for lambda", "((lambda (x) (+ x 2)) 3 4)"},
+		{"too few args for lambda", "((lambda (x y) (+ x y)) 5)"},
 	}
 
 	for _, tt := range tests {

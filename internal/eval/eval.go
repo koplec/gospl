@@ -104,6 +104,14 @@ func evalArgs(expr types.Expr, env *Environment) ([]types.Expr, error) {
 
 // 関数を引数に適用
 func apply(fn types.Expr, args []types.Expr) (types.Expr, error) {
+	switch f := fn.(type) {
+	case BuiltinFunc:
+		return f.Call(args)
+
+	case *Lambda:
+		//ユーザ定義関数
+		return applyLambda(f, args)
+	}
 	//まずは組み込む関数のみのサポート
 	builtin, ok := fn.(BuiltinFunc)
 	if !ok {
@@ -111,4 +119,26 @@ func apply(fn types.Expr, args []types.Expr) (types.Expr, error) {
 	}
 
 	return builtin.Call(args)
+}
+
+// λ
+func applyLambda(lambda *Lambda, args []types.Expr) (types.Expr, error) {
+	// 引数の数をチェック
+	// common lispだったら、引数の数が足りなかったら、nilとかにしなかったっけ？
+	if len(args) != len(lambda.Params) {
+		return nil, fmt.Errorf("wrong number of arguments: expected %d, got %d",
+			len(lambda.Params), len(args),
+		)
+	}
+
+	// 新しい環境を作成 クロージャの環境を親とする
+	newEnv := NewEnvironment(lambda.Env)
+
+	//仮引数に実引数を束縛
+	for i, param := range lambda.Params {
+		newEnv.Set(param, args[i])
+	}
+
+	// 関数本体を新しい環境で評価
+	return Eval(lambda.Body, newEnv)
 }
